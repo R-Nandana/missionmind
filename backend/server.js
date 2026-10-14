@@ -35,7 +35,7 @@ async function startServer() {
     }
     
     await mongoose.connect(mongoUri);
-    console.log('Connected to MongoDB at', mongoUri);
+    console.log('Connected to MongoDB');
     
     if (isMemory) {
        console.log('Seeding in-memory database automatically...');
