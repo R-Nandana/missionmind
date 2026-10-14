@@ -9,13 +9,17 @@ Retrieval pipeline:
 from __future__ import annotations
 
 import numpy as np
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from rank_bm25 import BM25Okapi
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError:
+if os.getenv("ENABLE_VECTOR_SEARCH", "true").lower() in {"1", "true", "yes"}:
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError:
+        SentenceTransformer = None
+else:
     SentenceTransformer = None
 
 from app.rag.chunker import DocumentChunk

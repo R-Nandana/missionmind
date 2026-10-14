@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Rocket } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -16,13 +17,13 @@ export default function Login() {
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:3001/api/auth/register', {
+      const res = await axios.post(`${API_BASE_URL}/auth/register`, {
         email,
         password,
         name: 'Scientist'
       }).catch(async (err) => {
         if (err.response && err.response.status === 400) {
-           return await axios.post('http://localhost:3001/api/auth/login', { email, password });
+           return await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
         }
         throw err;
       });

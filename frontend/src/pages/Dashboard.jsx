@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import ObservationCard from '../components/ObservationCard';
 import MarsGuideModal from '../components/MarsGuideModal';
+import { API_BASE_URL } from '../api';
 import { 
   Activity, Search, RotateCcw, AlertTriangle, Compass, Sparkles,
   BarChart2, ShieldAlert, ChevronLeft, ChevronRight, Layers, Eye,
@@ -46,7 +47,7 @@ export default function Dashboard() {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://localhost:3001/api/observations/stats', {
+      const res = await axios.get(`${API_BASE_URL}/observations/stats`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStats(res.data);
@@ -65,7 +66,7 @@ export default function Dashboard() {
       const solParam = overrides.solFilter !== undefined ? overrides.solFilter : solFilter;
       const typeParam = overrides.selectedAnomalyType !== undefined ? overrides.selectedAnomalyType : selectedAnomalyType;
 
-      let url = `http://localhost:3001/api/observations?page=${pageNum}&limit=12`;
+      let url = `${API_BASE_URL}/observations?page=${pageNum}&limit=12`;
       if (anomalyParam) url += `&is_anomaly=true`;
       if (solParam) url += `&sol=${solParam}`;
       if (typeParam && typeParam !== 'all') url += `&anomaly_type=${typeParam}`;

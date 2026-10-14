@@ -11,6 +11,10 @@ const PORT = Number(process.env.BACKEND_PORT || process.env.PORT || 3001);
 app.use(cors());
 app.use(express.json());
 
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/observations', require('./routes/observations'));

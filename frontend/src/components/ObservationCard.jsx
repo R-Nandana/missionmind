@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../api';
 import { 
   Activity, Thermometer, Wind, AlertTriangle, CheckCircle2, 
   ChevronDown, ChevronUp, Sun, Moon, Sunrise,
@@ -23,7 +24,7 @@ export default function ObservationCard({ obs, viewMode = 'explorer' }) {
     setAnalysisError('');
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post(`http://localhost:3001/api/observations/${obs._id}/analyze`, {}, {
+      const res = await axios.post(`${API_BASE_URL}/observations/${obs._id}/analyze`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const nextResult = res.data.analysis_result;
