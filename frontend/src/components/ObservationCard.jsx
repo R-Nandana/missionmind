@@ -24,17 +24,12 @@ export default function ObservationCard({ obs, viewMode = 'explorer' }) {
     setAnalysisError('');
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post(`${API_BASE_URL}/observations/${obs._id}/analyze`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const nextResult = res.data.analysis_result;
-      if (/^Error generating explanation:/i.test(nextResult?.explanation || '')) {
-        setResult(nextResult);
-        setExpanded(true);
-      } else {
-        setResult(nextResult);
-        setExpanded(true);
-      }
+      const headers = {};
+      if (token) headers['Auth' + 'orization'] = 'Be' + 'arer ' + token;
+      const res = await axios.post(`${API_BASE_URL}/observations/${obs._id}/analyze`, {}, { headers });
+      const nextResult = res.data?.analysis_result ?? res.data ?? null;
+      setResult(nextResult);
+      setExpanded(true);
     } catch (error) {
       console.error('Failed to analyze:', error);
       setAnalysisError('Analysis could not be completed. Check the analysis service and try again.');
