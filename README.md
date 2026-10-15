@@ -73,24 +73,41 @@ python scripts/eval_faithfulness.py
 
 ## Cloud Deployment
 
+The production architecture separates the services for maximum performance and reliability:
+- **Render**: Hosts the backend services (`missionmind-analysis` Python FastAPI + `missionmind-api` Node/Express API).
+- **Vercel**: Hosts the frontend single-page application (`missionmind-web` React/Vite).
+
 ### 1. Backend on Render (FastAPI + Node API)
+
+The root `render.yaml` defines the two interconnected backend web services:
+- **`missionmind-analysis`**: Python 3.11 FastAPI service using BM25 retrieval (`requirements-render.txt`) tailored for Render's free memory envelope.
+- **`missionmind-api`**: Node 22 Express server with JWT authentication, MongoDB connection resilience, and automated dataset seeding.
+
 Click below to deploy the backend services to Render via Blueprint:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://dashboard.render.com/blueprints/new?repo=https%3A%2F%2Fgithub.com%2FR-Nandana%2Fmissionmind)
 
-- Direct link: [Render Blueprint Deployment](https://dashboard.render.com/blueprints/new?repo=https%3A%2F%2Fgithub.com%2FR-Nandana%2Fmissionmind)
-- Render will automatically provision `missionmind-api` and `missionmind-analysis`.
-- Enter your `MONGODB_URI` when prompted (or let it use the resilient in-memory database).
-- Once deployed, copy your backend URL: `https://missionmind-api.onrender.com`.
+- **Direct link**: [Render Blueprint Deployment](https://dashboard.render.com/blueprints/new?repo=https%3A%2F%2Fgithub.com%2FR-Nandana%2Fmissionmind)
+- **Configuration & Secrets**:
+  - `MONGODB_URI`: Enter your MongoDB Atlas connection string. (Ensure `0.0.0.0/0` is permitted in Atlas Network Access. If skipped or connection is unreachable, the server automatically boots an in-memory database and auto-seeds the 2,400 observations).
+  - `JWT_SECRET`: Render generates this automatically.
+  - `OPENAI_API_KEY` *(Optional)*: Add to the analysis service's environment variables to enable LLM-generated explanations. Without it, the service returns its deterministic telemetry fallback.
+  - *Note*: Render's free instances sleep after 15 minutes of inactivity; the initial request after idle may take ~50 seconds to spin up.
+- Once deployed, copy your API URL: `https://<your-render-service>.onrender.com`.
 
 ### 2. Frontend on Vercel (React / Vite)
+
+The frontend is deployed to Vercel for instant CDN edge delivery, fast static asset serving, and automatic HTTPS.
+
 Click below to deploy the frontend to Vercel:
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FR-Nandana%2Fmissionmind&root-directory=frontend&env=VITE_API_URL&project-name=missionmind-web)
 
-- Direct link: [Vercel 1-Click Deploy](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FR-Nandana%2Fmissionmind&root-directory=frontend&env=VITE_API_URL&project-name=missionmind-web)
-- Set `VITE_API_URL` to `https://missionmind-api.onrender.com/api` (your Render backend URL).
-- Vercel will automatically build the Vite application and apply the SPA routes from [`frontend/vercel.json`](frontend/vercel.json).
+- **Direct link**: [Vercel 1-Click Deploy](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FR-Nandana%2Fmissionmind&root-directory=frontend&env=VITE_API_URL&project-name=missionmind-web)
+- **Configuration**:
+  - `VITE_API_URL`: Set to `https://<your-render-service>.onrender.com/api` (the URL from Step 1).
+- Single-page application rewrites are pre-configured in [`frontend/vercel.json`](frontend/vercel.json) to ensure clean URL routing without 404s on page reload.
+
 
 
 ## Scope
