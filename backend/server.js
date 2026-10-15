@@ -12,24 +12,43 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = express();
 const PORT = Number(process.env.PORT || process.env.BACKEND_PORT || 3001);
 
-// CORS — allow localhost in dev and the deployed Vercel frontend in production
-const ALLOWED_ORIGINS = [
+// CORS — allow localhost, Vercel deployments, and FRONTEND_URL
+const configuredFrontend = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim().replace(/\/+$/, '') : null;
+const STATIC_ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
-  process.env.FRONTEND_URL,        // e.g. https://missionmind-xxx.vercel.app
+  'http://localhost:3000',
+  configuredFrontend,
 ].filter(Boolean);
 
-app.use(cors({
+function isOriginAllowed(origin) {
+  if (!origin) return true; // Allow non-browser requests (Postman, curl, server-to-server)
+  const clean = origin.replace(/\/+$/, '');
+  if (STATIC_ALLOWED_ORIGINS.includes(clean)) return true;
+  // Automatically allow any Vercel deployment (e.g. https://missionmind-delta.vercel.app)
+  if (/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.vercel\.app$/i.test(clean)) return true;
+  // Automatically allow any localhost port
+  if (/^http:\/\/localhost(:\d+)?$/i.test(clean)) return true;
+  return false;
+}
+
+const corsOptions = {
   origin: (origin, callback) => {
-    // Allow server-to-server requests (no origin) and any allowed origin
-    if (!origin || ALLOWED_ORIGINS.some(o => origin.startsWith(o))) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`CORS: origin ${origin} not allowed`));
+      callback(null, false);
     }
   },
-  credentials: true
-}));
+  credentials: true,
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
