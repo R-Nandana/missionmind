@@ -2,11 +2,12 @@ const axios = require('axios');
 
 // API key loaded exclusively from environment — never hardcode secrets in source.
 // Set GEMINI_API_KEY in your .env file locally, or in Render/Vercel env vars for production.
-const PREFERRED_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+const PREFERRED_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
 // Robust candidate models: automatically fallback if one experiences high demand (503)
 const CANDIDATE_MODELS = [
   PREFERRED_MODEL,
+  'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest',
   'gemini-3.8-flash',
   'gemini-flash-latest'
