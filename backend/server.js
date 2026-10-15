@@ -12,7 +12,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = express();
 const PORT = Number(process.env.PORT || process.env.BACKEND_PORT || 3001);
 
-// CORS — allow localhost, Vercel deployments, and FRONTEND_URL
+// CORS — allow all localhost ports, Vercel deployments, and FRONTEND_URL
 const configuredFrontend = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim().replace(/\/+$/, '') : null;
 const STATIC_ALLOWED_ORIGINS = [
   'http://localhost:5173',
