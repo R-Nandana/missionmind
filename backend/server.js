@@ -12,8 +12,24 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = express();
 const PORT = Number(process.env.PORT || process.env.BACKEND_PORT || 3001);
 
-// Middleware
-app.use(cors());
+// CORS — allow localhost in dev and the deployed Vercel frontend in production
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:4173',
+  process.env.FRONTEND_URL,        // e.g. https://missionmind-xxx.vercel.app
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow server-to-server requests (no origin) and any allowed origin
+    if (!origin || ALLOWED_ORIGINS.some(o => origin.startsWith(o))) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
