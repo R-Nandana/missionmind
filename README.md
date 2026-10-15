@@ -91,7 +91,9 @@ Click below to deploy the backend services to Render via Blueprint:
 - **Configuration & Secrets**:
   - `MONGODB_URI`: Enter your MongoDB Atlas connection string. (Ensure `0.0.0.0/0` is permitted in Atlas Network Access. If skipped or connection is unreachable, the server automatically boots an in-memory database and auto-seeds the 2,400 observations).
   - `JWT_SECRET`: Render generates this automatically.
-  - `OPENAI_API_KEY` *(Optional)*: Add to the analysis service's environment variables to enable LLM-generated explanations. Without it, the service returns its deterministic telemetry fallback.
+  - `ADMIN_EMAIL` and `ADMIN_PASSWORD`: Set these backend environment variables to enable the Admin tab on the login page. Use a unique, strong password; do not use these credentials for a regular scientist account.
+  - `GEMINI_API_KEY` *(Required for AI Insights)*: Add to **both** the `missionmind-api` and `missionmind-analysis` services. Powers the 4-section Gemini AI Insights on every observation card and the executive Mission Intelligence Briefing. Model defaults to `gemini-flash-lite-latest`.
+  - `OPENAI_API_KEY` *(Optional)*: Legacy fallback for RAG explanations in the Python analysis service. Without it (and without Gemini), the service returns its deterministic telemetry fallback.
   - *Note*: Render's free instances sleep after 15 minutes of inactivity; the initial request after idle may take ~50 seconds to spin up.
 - Once deployed, copy your API URL: `https://<your-render-service>.onrender.com`.
 

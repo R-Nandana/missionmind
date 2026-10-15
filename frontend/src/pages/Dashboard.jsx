@@ -6,7 +6,7 @@ import { API_BASE_URL } from '../api';
 import { 
   Activity, Search, RotateCcw, AlertTriangle, Compass, Sparkles,
   BarChart2, ShieldAlert, ChevronLeft, ChevronRight, Layers, Eye,
-  Satellite, SlidersHorizontal
+  Satellite, SlidersHorizontal, ChevronDown, ChevronUp, RefreshCw
 } from 'lucide-react';
 
 const SIMULATED_EVENTS = [
@@ -42,6 +42,9 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('explorer'); // 'explorer' | 'scientist'
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [stats, setStats] = useState(null);
+  const [missionBriefing, setMissionBriefing] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [briefingExpanded, setBriefingExpanded] = useState(false);
 
   // Fetch telemetry overview statistics
   const fetchStats = async () => {
@@ -53,6 +56,23 @@ export default function Dashboard() {
       setStats(res.data);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
+    }
+  };
+
+  // Fetch Gemini-powered Mission Intelligence Briefing
+  const fetchMissionInsights = async () => {
+    setBriefingLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await axios.get(`${API_BASE_URL}/observations/mission-insights`, { headers });
+      setMissionBriefing(res.data);
+      setBriefingExpanded(true);
+    } catch (err) {
+      console.error('Failed to fetch mission insights:', err);
+    } finally {
+      setBriefingLoading(false);
     }
   };
 
@@ -180,6 +200,18 @@ export default function Dashboard() {
             <span>Mars Science Guide</span>
           </button>
 
+          <button
+            className="btn btn-gemini-briefing"
+            onClick={fetchMissionInsights}
+            disabled={briefingLoading}
+            title="Generate an executive Gemini AI meteorological briefing for Sols 1-100"
+          >
+            {briefingLoading
+              ? <Activity className="spinner" size={16} />
+              : <Sparkles size={16} color="#38bdf8" />}
+            <span>{briefingLoading ? 'Generating Briefing...' : 'AI Mission Briefing'}</span>
+          </button>
+
           {/* View Mode Toggle: Explorer vs Scientist */}
           <div className="view-mode-toggle" title="Switch between beginner Explorer view and rigorous Scientist view">
             <button 
@@ -224,6 +256,41 @@ export default function Dashboard() {
           <div className="stat-sub">{viewMode === 'explorer' ? 'Plain-language summaries' : 'Z-scores and citations'}</div>
         </div>
       </div>
+
+      {/* Gemini Mission Intelligence Briefing Panel */}
+      {missionBriefing && (
+        <div className="glass-panel mission-briefing-panel animate-fade-in">
+          <div className="briefing-header" onClick={() => setBriefingExpanded(!briefingExpanded)} style={{ cursor: 'pointer' }}>
+            <div className="briefing-header-left">
+              <span className="gemini-pill" style={{ fontSize: '0.7rem' }}>
+                <Sparkles size={13} /> Gemini AI
+              </span>
+              <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#f1f5f9', margin: 0 }}>
+                Mission Intelligence Briefing — Sols 1–100
+              </h3>
+              <span className="gemini-model-badge" style={{ fontSize: '0.65rem' }}>{missionBriefing.model}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn-refresh-insights"
+                onClick={(e) => { e.stopPropagation(); fetchMissionInsights(); }}
+                disabled={briefingLoading}
+                title="Regenerate mission briefing"
+              >
+                <RefreshCw size={12} className={briefingLoading ? 'spinner' : ''} />
+                <span>Refresh</span>
+              </button>
+              {briefingExpanded ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+            </div>
+          </div>
+          {briefingExpanded && (
+            <div className="briefing-body">
+              <pre className="briefing-text">{missionBriefing.briefing}</pre>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Quick-Jump Carousel: Simulated Mars Events */}
       <div className="quick-jump-container glass-panel">

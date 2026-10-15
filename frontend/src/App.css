@@ -259,6 +259,30 @@ button, input, select {
   gap: 18px;
 }
 
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.auth-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0.7rem 0.4rem;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.auth-mode-button.active {
+  border-color: rgba(103, 232, 249, 0.55);
+  background: rgba(34, 211, 238, 0.12);
+  color: #a5f3fc;
+}
+
 .field-wrap {
   display: flex;
   flex-direction: column;

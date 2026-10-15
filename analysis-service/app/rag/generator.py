@@ -13,6 +13,7 @@ import json
 import re
 from typing import List, Optional
 
+import httpx
 from openai import OpenAI
 
 from app.rag.retriever import RetrievalResult
@@ -98,17 +99,52 @@ def build_user_prompt(
 
 
 class RAGGenerator:
-    """Generates LLM explanations with chunk-level citations."""
+    """Generates LLM explanations with chunk-level citations using Gemini or OpenAI."""
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = "",
         model: str = "gpt-4o-mini",
+        gemini_api_key: str = "",
+        gemini_model: str = "gemini-3.8-flash",
         min_evidence_score: float = 0.25,
     ):
-        self.client = OpenAI(api_key=api_key) if api_key else None
+        self.client = OpenAI(api_key=api_key) if (api_key and not api_key.startswith("sk-...")) else None
         self.model = model
+        self.gemini_api_key = gemini_api_key
+        self.gemini_model = gemini_model
         self.min_evidence_score = min_evidence_score
+
+    def _generate_with_gemini(self, user_prompt: str) -> Optional[str]:
+        """Call Gemini generateContent API with fallback cascade."""
+        models = [self.gemini_model, "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.8-flash"]
+        seen = set()
+        unique_models = [m for m in models if not (m in seen or seen.add(m))]
+
+        for model in unique_models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": user_prompt}]}],
+                    "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                    "generationConfig": {"temperature": 0.25, "maxOutputTokens": 1000}
+                }
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-goog-api-key": self.gemini_api_key
+                }
+                with httpx.Client(timeout=18.0) as client:
+                    resp = client.post(url, json=payload, headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                return parts[0]["text"].strip()
+            except Exception:
+                continue
+        return None
 
     def generate(
         self,
@@ -132,13 +168,6 @@ class RAGGenerator:
             avg_score = sum(c.get("score", 0) for c in evidence_chunks) / len(evidence_chunks)
             status = "ok" if avg_score >= self.min_evidence_score else "insufficient_evidence"
 
-        # If no API key, return a structured fallback
-        if not self.client:
-            return self._fallback_explanation(
-                anomaly_detected, anomaly_score, anomaly_reasons,
-                similar_events, evidence_chunks, status
-            ), status
-
         user_prompt = build_user_prompt(
             description=description,
             anomaly_detected=anomaly_detected,
@@ -148,45 +177,54 @@ class RAGGenerator:
             evidence_chunks=evidence_chunks,
         )
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,
-                max_tokens=1000,
-            )
-            explanation = response.choices[0].message.content or ""
+        # 1. Try Gemini if configured
+        if self.gemini_api_key:
+            try:
+                gemini_text = self._generate_with_gemini(user_prompt)
+                if gemini_text:
+                    cited_chunks = set(re.findall(r'\[([a-f0-9]{12})\]', gemini_text))
+                    available_chunks = {c["chunk_id"] for c in evidence_chunks}
+                    if evidence_chunks and not cited_chunks.intersection(available_chunks):
+                        gemini_text += (
+                            "\n\n⚠️ Note: The explanation above could not be fully "
+                            "grounded in the retrieved evidence."
+                        )
+                        status = "insufficient_evidence"
+                    return gemini_text, status
+            except Exception:
+                pass
 
-            # Verify citations exist
-            cited_chunks = set(re.findall(r'\[([a-f0-9]{12})\]', explanation))
-            available_chunks = {c["chunk_id"] for c in evidence_chunks}
-
-            if evidence_chunks and not cited_chunks.intersection(available_chunks):
-                # LLM failed to cite — append warning
-                explanation += (
-                    "\n\n⚠️ Note: The explanation above could not be fully "
-                    "grounded in the retrieved evidence."
+        # 2. Try OpenAI if client initialized
+        if self.client:
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.3,
+                    max_tokens=1000,
                 )
-                status = "insufficient_evidence"
+                explanation = response.choices[0].message.content or ""
+                cited_chunks = set(re.findall(r'\[([a-f0-9]{12})\]', explanation))
+                available_chunks = {c["chunk_id"] for c in evidence_chunks}
+                if evidence_chunks and not cited_chunks.intersection(available_chunks):
+                    explanation += (
+                        "\n\n⚠️ Note: The explanation above could not be fully "
+                        "grounded in the retrieved evidence."
+                    )
+                    status = "insufficient_evidence"
+                return explanation, status
+            except Exception:
+                pass
 
-            return explanation, status
-
-        except Exception:
-            # Keep provider details (including credential-related responses) out
-            # of the user-facing API. Preserve a useful local explanation when
-            # the model service is unavailable or rejects its configured key.
-            fallback = self._fallback_explanation(
-                anomaly_detected, anomaly_score, anomaly_reasons,
-                similar_events, evidence_chunks, "insufficient_evidence"
-            )
-            return (
-                "AI explanation is temporarily unavailable. Showing the local "
-                "evidence-based summary instead.\n\n" + fallback,
-                "insufficient_evidence"
-            )
+        # 3. Local evidence-based fallback
+        fallback = self._fallback_explanation(
+            anomaly_detected, anomaly_score, anomaly_reasons,
+            similar_events, evidence_chunks, status
+        )
+        return fallback, status
 
     def _fallback_explanation(
         self,

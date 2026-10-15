@@ -4,7 +4,7 @@ import { API_BASE_URL } from '../api';
 import { 
   Activity, Thermometer, Wind, AlertTriangle, CheckCircle2, 
   ChevronDown, ChevronUp, Sun, Moon, Sunrise,
-  FileText, ExternalLink, Database, Gauge
+  FileText, ExternalLink, Database, Gauge, Sparkles, RefreshCw
 } from 'lucide-react';
 
 export default function ObservationCard({ obs, viewMode = 'explorer' }) {
@@ -25,14 +25,34 @@ export default function ObservationCard({ obs, viewMode = 'explorer' }) {
     try {
       const token = localStorage.getItem('token');
       const headers = {};
-      if (token) headers['Auth' + 'orization'] = 'Be' + 'arer ' + token;
+      if (token) headers['Authorization'] = 'Bearer ' + token;
       const res = await axios.post(`${API_BASE_URL}/observations/${obs._id}/analyze`, {}, { headers });
       const nextResult = res.data?.analysis_result ?? res.data ?? null;
       setResult(nextResult);
       setExpanded(true);
     } catch (error) {
       console.error('Failed to analyze:', error);
-      setAnalysisError('Analysis could not be completed. Check the analysis service and try again.');
+      setAnalysisError('Analysis could not be completed. Check the backend service and try again.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleGenerateAiInsights = async () => {
+    setAnalyzing(true);
+    setAnalysisError('');
+    try {
+      const token = localStorage.getItem('token');
+      const headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await axios.post(`${API_BASE_URL}/observations/${obs._id}/ai-insights`, {}, { headers });
+      const nextResult = res.data?.analysis_result ?? res.data ?? null;
+      setResult(nextResult);
+      setExpanded(true);
+      setDetailTab('explanation');
+    } catch (error) {
+      console.error('Failed to generate AI insights:', error);
+      setAnalysisError('AI insights could not be generated. Check your Gemini API key and try again.');
     } finally {
       setAnalyzing(false);
     }
@@ -165,8 +185,8 @@ export default function ObservationCard({ obs, viewMode = 'explorer' }) {
           disabled={analyzing} 
           style={{ width: '100%' }}
         >
-          {analyzing ? <Activity className="spinner" size={18} /> : <Activity size={18} />}
-          {analyzing ? 'Running Deep Analysis...' : hasExplanationError ? 'Retry Analysis' : 'Run Physics & RAG Analysis'}
+          {analyzing ? <Activity className="spinner" size={18} /> : <Sparkles size={18} color="#38bdf8" />}
+          {analyzing ? 'Analyzing Telemetry & Generating AI Insights...' : hasExplanationError ? 'Retry with Gemini AI' : 'Run Physics & Gemini AI Analysis'}
         </button>
       )}
       {analysisError && (
@@ -190,7 +210,7 @@ export default function ObservationCard({ obs, viewMode = 'explorer' }) {
               <span className="analysis-score">{result.anomaly.score.toFixed(2)}σ</span>
             </span>
             <span className="analysis-toggle-label">
-              {expanded ? 'Hide details' : 'Analysis details'}
+              {expanded ? 'Hide details' : 'Analysis & AI insights'}
               {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </span>
           </button>
@@ -203,7 +223,7 @@ export default function ObservationCard({ obs, viewMode = 'explorer' }) {
                   className={`subtab-btn ${detailTab === 'explanation' ? 'active' : ''}`}
                   onClick={() => setDetailTab('explanation')}
                 >
-                  <FileText size={14} /> Explanation
+                  <Sparkles size={14} color="#38bdf8" /> AI Insights
                 </button>
                 <button 
                   className={`subtab-btn ${detailTab === 'telemetry' ? 'active' : ''}`}
@@ -219,16 +239,84 @@ export default function ObservationCard({ obs, viewMode = 'explorer' }) {
                 </button>
               </div>
 
-              {/* Tab 1: Explanation */}
+              {/* Tab 1: Gemini AI Insights & Scientific Explanation */}
               {detailTab === 'explanation' && (
                 <div className="tab-pane animate-fade-in">
-                  <div className="explanation-box">
-                    <p style={{ lineHeight: '1.6', fontSize: '0.875rem', color: '#e2e8f0' }}>
-                      {hasExplanationError
-                        ? `AI explanation unavailable. Anomaly score: ${result.anomaly.score.toFixed(2)}. ${result.anomaly.reasons?.join('; ') || 'The observation was evaluated against its seasonal baseline.'}`
-                        : result.explanation}
-                    </p>
-                  </div>
+                  {result.ai_insights ? (
+                    <div className="gemini-insights-container">
+                      <div className="gemini-badge-header">
+                        <span className="gemini-pill">
+                          <Sparkles size={13} /> Gemini AI Insights
+                        </span>
+                        <span className="gemini-model-badge">
+                          {result.ai_model || 'Gemini Flash'}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-refresh-insights"
+                          onClick={handleGenerateAiInsights}
+                          disabled={analyzing}
+                          title="Regenerate scientific insights with Gemini AI"
+                        >
+                          <RefreshCw size={12} className={analyzing ? 'spinner' : ''} />
+                          <span>{analyzing ? 'Generating...' : 'Refresh AI'}</span>
+                        </button>
+                      </div>
+
+                      <div className="gemini-insight-section summary-section">
+                        <div className="section-label">Executive Meteorological Summary</div>
+                        <p className="gemini-insight-text">
+                          {typeof result.ai_insights.summary === 'string'
+                            ? result.ai_insights.summary
+                            : JSON.stringify(result.ai_insights.summary)}
+                        </p>
+                      </div>
+
+                      {result.ai_insights.atmospheric_dynamics && (
+                        <div className="gemini-insight-section dynamics-section">
+                          <div className="section-label">Atmospheric Dynamics & Boundary Layer Physics</div>
+                          <p className="gemini-insight-text">{result.ai_insights.atmospheric_dynamics}</p>
+                        </div>
+                      )}
+
+                      {result.ai_insights.science_hypothesis && (
+                        <div className="gemini-insight-section hypothesis-section">
+                          <div className="section-label">Planetary Science Hypothesis</div>
+                          <p className="gemini-insight-text">{result.ai_insights.science_hypothesis}</p>
+                        </div>
+                      )}
+
+                      {result.ai_insights.mission_safety && (
+                        <div className="gemini-insight-section safety-section">
+                          <div className="section-label">Perseverance Tactical & Safety Protocol</div>
+                          <p className="gemini-insight-text">{result.ai_insights.mission_safety}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="explanation-box">
+                      <div className="gemini-badge-header" style={{ marginBottom: '0.6rem' }}>
+                        <span className="gemini-pill">
+                          <FileText size={13} /> Telemetry Findings
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-refresh-insights"
+                          onClick={handleGenerateAiInsights}
+                          disabled={analyzing}
+                          title="Generate deep scientific insights with Gemini AI"
+                        >
+                          <Sparkles size={12} />
+                          <span>{analyzing ? 'Generating...' : 'Get Gemini AI Insights'}</span>
+                        </button>
+                      </div>
+                      <p style={{ lineHeight: '1.6', fontSize: '0.875rem', color: '#e2e8f0', whiteSpace: 'pre-line' }}>
+                        {hasExplanationError
+                          ? `AI explanation unavailable. Anomaly score: ${result.anomaly.score.toFixed(2)}. ${result.anomaly.reasons?.join('; ') || 'The observation was evaluated against its seasonal baseline.'}`
+                          : result.explanation}
+                      </p>
+                    </div>
+                  )}
 
                   {result.similar_events?.length > 0 && (
                     <div style={{ marginTop: '0.75rem' }}>

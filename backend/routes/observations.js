@@ -3,6 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 const Observation = require('../models/Observation');
 const authMiddleware = require('../middleware/auth');
+const geminiService = require('../services/geminiService');
 
 const ANALYSIS_SERVICE_URL = (process.env.ANALYSIS_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
@@ -120,6 +121,35 @@ router.get('/stats', authMiddleware, async (req, res) => {
   }
 });
 
+// Get executive Mars 2020 Mission AI Intelligence Briefing across Sols 1-100
+router.get('/mission-insights', authMiddleware, async (req, res) => {
+  try {
+    const totalObservations = await Observation.countDocuments();
+    const anomalyCount = await Observation.countDocuments({ is_anomaly: true });
+    const anomalousSols = await Observation.distinct('sol', { is_anomaly: true });
+
+    const stats = {
+      totalObservations,
+      anomalyCount,
+      anomalyPercentage: totalObservations > 0 ? ((anomalyCount / totalObservations) * 100).toFixed(1) : 0
+    };
+
+    const briefingRes = await geminiService.generateMissionOverviewInsights(
+      stats,
+      anomalousSols.sort((a, b) => a - b)
+    );
+
+    if (!briefingRes.success) {
+      return res.status(502).json({ error: 'Failed to generate mission briefing', details: briefingRes.error });
+    }
+
+    res.json(briefingRes);
+  } catch (error) {
+    console.error('Error fetching mission insights:', error);
+    res.status(500).json({ error: 'Failed to generate mission insights', details: error.message });
+  }
+});
+
 // Get a single observation
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
@@ -175,22 +205,31 @@ router.post('/:id/analyze', authMiddleware, async (req, res) => {
       status: analysisResult?.status || 'insufficient_evidence',
     };
 
-    // Older analysis-service instances can still return raw LLM provider
-    // errors in the explanation field. Keep the deterministic analysis useful
-    // and prevent provider responses from reaching the UI.
-    if (/^Error generating explanation:/i.test(normalizedResult.explanation || '')) {
-      const anomaly = normalizedResult.anomaly || {};
-      const reasons = Array.isArray(anomaly.reasons) && anomaly.reasons.length
-        ? anomaly.reasons.join('; ')
-        : 'All measured variables are within seasonal norms.';
-      const score = Number(anomaly.score);
-      normalizedResult.explanation = [
-        'AI-generated explanation is unavailable, so this summary uses the completed telemetry analysis.',
-        `Anomaly detected: ${anomaly.detected ? 'yes' : 'no'}${Number.isFinite(score) ? ` (score ${score.toFixed(2)})` : ''}.`,
-        `Findings: ${reasons}`,
-        'A valid OPENAI_API_KEY is required to restore AI-generated explanations.'
-      ].join(' ');
-      normalizedResult.status = 'insufficient_evidence';
+    // If downstream service did not supply an AI explanation, enrich using Gemini AI
+    const needsAiExplanation = !normalizedResult.explanation
+      || normalizedResult.explanation.includes('Telemetry-only')
+      || normalizedResult.explanation.includes('AI explanation is temporarily unavailable')
+      || normalizedResult.explanation.includes('AI-generated explanation is unavailable')
+      || normalizedResult.explanation.includes('valid OPENAI_API_KEY is required')
+      || normalizedResult.status === 'insufficient_evidence';
+
+    if (geminiService.isConfigured() && needsAiExplanation) {
+      try {
+        const geminiRes = await geminiService.generateObservationInsights(
+          observation,
+          normalizedResult.anomaly,
+          normalizedResult.evidence
+        );
+        if (geminiRes.success) {
+          normalizedResult.explanation = geminiRes.explanation;
+          normalizedResult.ai_insights = geminiRes.structured;
+          normalizedResult.ai_provider = 'gemini';
+          normalizedResult.ai_model = geminiRes.model;
+          normalizedResult.status = 'ok';
+        }
+      } catch (geminiErr) {
+        console.warn('[ObservationsRoute] Gemini insight generation failed, using fallback:', geminiErr.message);
+      }
     }
 
     // Save the sanitized result
@@ -201,6 +240,43 @@ router.post('/:id/analyze', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Analysis error:', error.message);
     res.status(500).json({ error: 'Analysis service failed', details: error.message });
+  }
+});
+
+// Dedicated endpoint to generate or refresh Gemini AI insights for an observation
+router.post('/:id/ai-insights', authMiddleware, async (req, res) => {
+  try {
+    const observation = await Observation.findById(req.params.id);
+    if (!observation) return res.status(404).json({ error: 'Observation not found' });
+
+    const currentAnalysis = observation.analysis_result || buildLocalAnalysisFallback(observation);
+    const geminiRes = await geminiService.generateObservationInsights(
+      observation,
+      currentAnalysis.anomaly,
+      currentAnalysis.evidence || []
+    );
+
+    if (!geminiRes.success) {
+      return res.status(502).json({ error: 'Failed to generate AI insights', details: geminiRes.error });
+    }
+
+    const updatedAnalysis = {
+      ...currentAnalysis,
+      explanation: geminiRes.explanation,
+      ai_insights: geminiRes.structured,
+      ai_provider: 'gemini',
+      ai_model: geminiRes.model,
+      status: 'ok',
+    };
+
+    observation.analysis_result = updatedAnalysis;
+    observation.markModified('analysis_result');
+    await observation.save();
+
+    res.json(observation);
+  } catch (error) {
+    console.error('Error generating AI insights:', error);
+    res.status(500).json({ error: 'Failed to generate AI insights', details: error.message });
   }
 });
 

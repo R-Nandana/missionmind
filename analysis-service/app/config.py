@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     embedding_model_name: str = "all-MiniLM-L6-v2"
 
+    # Gemini AI
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.8-flash"
+
     # Paths
     data_dir: Path = _SERVICE_ROOT.parent / "data"
     processed_dir: Path = _SERVICE_ROOT.parent / "data" / "processed"

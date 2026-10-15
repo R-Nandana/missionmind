@@ -9,9 +9,15 @@ services:
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.11
+        value: "3.11.11"
       - key: ENABLE_VECTOR_SEARCH
         value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: "gemini-flash-lite-latest"
 
   - type: web
     name: missionmind-api
@@ -23,16 +29,35 @@ services:
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
-        value: 22.14.0
+        value: "22.14.0"
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
       - key: ANALYSIS_SERVICE_URL
         fromService:
           type: web
           name: missionmind-analysis
           envVarKey: RENDER_EXTERNAL_URL
+      - key: BACKEND_PORT
+        value: "3001"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: "gemini-flash-lite-latest"
+
+  - type: static
+    name: missionmind-frontend
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: "https://missionmind-api.onrender.com/api"
 
 
 

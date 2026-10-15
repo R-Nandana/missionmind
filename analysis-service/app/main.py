@@ -46,6 +46,8 @@ retriever = HybridRetriever(
 generator = RAGGenerator(
     api_key=settings.openai_api_key,
     model=settings.llm_model,
+    gemini_api_key=settings.gemini_api_key,
+    gemini_model=settings.gemini_model,
     min_evidence_score=settings.min_evidence_score,
 )
 
