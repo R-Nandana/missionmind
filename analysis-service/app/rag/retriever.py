@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 from rank_bm25 import BM25Okapi
 if os.getenv("ENABLE_VECTOR_SEARCH", "true").lower() in {"1", "true", "yes"}:
     try:
-        from sentence_transformers import SentenceTransformer
+        from sentence_transformers import SentenceTransformer  # type: ignore
     except ImportError:
         SentenceTransformer = None
 else:

@@ -1,17 +1,21 @@
 const axios = require('axios');
+const path = require('path');
+require('dotenv').config();
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-// API key loaded exclusively from environment — never hardcode secrets in source.
-// Set GEMINI_API_KEY in your .env file locally, or in Render/Vercel env vars for production.
-const PREFERRED_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+function getCandidateModels() {
+  const preferred = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+  return [
+    preferred,
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-latest'
+  ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
+}
 
-// Robust candidate models: automatically fallback if one experiences high demand (503)
-const CANDIDATE_MODELS = [
-  PREFERRED_MODEL,
-  'gemini-3.5-flash-lite',
-  'gemini-flash-lite-latest',
-  'gemini-3.8-flash',
-  'gemini-flash-latest'
-].filter((m, idx, arr) => arr.indexOf(m) === idx);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Call Google Gemini generateContent API with model cascade fallback.
@@ -24,57 +28,67 @@ async function callGemini(contents, systemInstruction = '', options = {}) {
 
   const timeout = options.timeout || 20000;
   let lastError = null;
+  const candidates = getCandidateModels();
 
-  for (const model of CANDIDATE_MODELS) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      
-      const payload = {
-        contents: Array.isArray(contents) ? contents : [{ parts: [{ text: contents }] }]
-      };
-
-      if (systemInstruction) {
-        payload.systemInstruction = {
-          parts: [{ text: systemInstruction }]
+  for (const model of candidates) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        
+        const payload = {
+          contents: Array.isArray(contents) ? contents : [{ parts: [{ text: contents }] }]
         };
-      }
 
-      payload.generationConfig = {
-        temperature: options.temperature !== undefined ? options.temperature : 0.3,
-        maxOutputTokens: options.maxOutputTokens || 1200
-      };
+        if (systemInstruction) {
+          payload.systemInstruction = {
+            parts: [{ text: systemInstruction }]
+          };
+        }
 
-      if (options.jsonMode) {
-        payload.generationConfig.responseMimeType = 'application/json';
-      }
-
-      const response = await axios.post(url, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-goog-api-key': apiKey
-        },
-        timeout
-      });
-
-      if (response.data?.error) {
-        throw new Error(response.data.error.message || `Error code ${response.data.error.code}`);
-      }
-
-      const candidate = response.data?.candidates?.[0];
-      const text = candidate?.content?.parts?.[0]?.text;
-
-      if (text) {
-        return {
-          text: text.trim(),
-          model,
-          finishReason: candidate.finishReason || 'STOP'
+        payload.generationConfig = {
+          temperature: options.temperature !== undefined ? options.temperature : 0.3,
+          maxOutputTokens: options.maxOutputTokens || 1200
         };
+
+        if (options.jsonMode) {
+          payload.generationConfig.responseMimeType = 'application/json';
+        }
+
+        const response = await axios.post(url, payload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': apiKey
+          },
+          timeout
+        });
+
+        if (response.data?.error) {
+          throw new Error(response.data.error.message || `Error code ${response.data.error.code}`);
+        }
+
+        const candidate = response.data?.candidates?.[0];
+        const text = candidate?.content?.parts?.[0]?.text;
+
+        if (text) {
+          return {
+            text: text.trim(),
+            model,
+            finishReason: candidate.finishReason || 'STOP'
+          };
+        }
+      } catch (err) {
+        lastError = err;
+        const status = err.response?.status;
+        const errorMsg = err.response?.data?.error?.message || err.message;
+        
+        if (status === 503 && attempt === 0) {
+          await sleep(800);
+          continue;
+        }
+
+        console.warn(`[GeminiService] Model ${model} encountered issue (${status || 'error'}): ${errorMsg}. Trying fallback model...`);
+        break;
       }
-    } catch (err) {
-      lastError = err;
-      const status = err.response?.status;
-      const errorMsg = err.response?.data?.error?.message || err.message;
-      console.warn(`[GeminiService] Model ${model} encountered issue (${status || 'error'}): ${errorMsg}. Trying fallback model...`);
     }
   }
 

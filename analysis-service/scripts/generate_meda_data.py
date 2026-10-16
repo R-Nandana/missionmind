@@ -19,8 +19,8 @@ from pathlib import Path
 # Add parent to path so we can import app modules
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np
-import pandas as pd
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
 
 # ── Mars constants ───────────────────────────────────────────────────────────
 SOLS = range(1, 101)            # 100 sols

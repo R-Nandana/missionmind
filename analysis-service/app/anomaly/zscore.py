@@ -12,7 +12,7 @@ All numbers are computed here; the LLM never assigns scores.
 from __future__ import annotations
 
 import json
-import numpy as np
+import numpy as np  # type: ignore
 import pandas as pd
 from dataclasses import dataclass, field
 from pathlib import Path

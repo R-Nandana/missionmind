@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import ObservationCard from '../components/ObservationCard';
 import MarsGuideModal from '../components/MarsGuideModal';
@@ -47,17 +47,17 @@ export default function Dashboard() {
   const [briefingExpanded, setBriefingExpanded] = useState(false);
 
   // Fetch telemetry overview statistics
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const headers = {};
-      if (token) headers['Auth' + 'orization'] = 'Be' + 'arer ' + token;
+      if (token) headers['Authorization'] = 'Bearer ' + token;
       const res = await axios.get(`${API_BASE_URL}/observations/stats`, { headers });
       setStats(res.data);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
-  };
+  }, []);
 
   // Fetch Gemini-powered Mission Intelligence Briefing
   const fetchMissionInsights = async () => {
@@ -77,7 +77,7 @@ export default function Dashboard() {
   };
 
   // Fetch observations with applied filters
-  const fetchObservations = async (pageNum, overrides = {}) => {
+  const fetchObservations = useCallback(async (pageNum, overrides = {}) => {
     setLoading(true);
     setObservationsError('');
     try {
@@ -92,7 +92,7 @@ export default function Dashboard() {
       if (typeParam && typeParam !== 'all') url += `&anomaly_type=${typeParam}`;
 
       const headers = {};
-      if (token) headers['Auth' + 'orization'] = 'Be' + 'arer ' + token;
+      if (token) headers['Authorization'] = 'Bearer ' + token;
       const res = await axios.get(url, { headers });
       setObservations(res.data.observations);
       setTotalPages(res.data.totalPages);
@@ -109,11 +109,12 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [onlyAnomalies, solFilter, selectedAnomalyType]);
 
   useEffect(() => {
     fetchStats();
     fetchObservations(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Quick jump to a simulated anomaly event

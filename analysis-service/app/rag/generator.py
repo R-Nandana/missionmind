@@ -68,17 +68,23 @@ def build_user_prompt(
     if similar_events:
         prompt_parts.extend(["", "## Similar Historical Events"])
         for evt in similar_events:
+            evt_id = evt.get("event_id", "EVT-SIM")
+            evt_summary = evt.get("summary", "Historical event")
+            evt_sim = evt.get("similarity", 0.0)
             prompt_parts.append(
-                f"- {evt['event_id']}: {evt['summary']} "
-                f"(similarity: {evt['similarity']:.2%})"
+                f"- {evt_id}: {evt_summary} "
+                f"(similarity: {evt_sim:.2%})"
             )
 
     if evidence_chunks:
         prompt_parts.extend(["", "## Retrieved Evidence Chunks (cite these by chunk_id)"])
         for chunk in evidence_chunks:
+            cid = chunk.get("chunk_id", "unknown")
+            dtitle = chunk.get("doc_title", "MEDA Atmospheric Reference")
+            snippet = chunk.get("snippet", "")
             prompt_parts.append(
-                f"\n[{chunk['chunk_id']}] from \"{chunk['doc_title']}\":\n"
-                f"{chunk['snippet']}\n"
+                f"\n[{cid}] from \"{dtitle}\":\n"
+                f"{snippet}\n"
             )
     else:
         prompt_parts.extend([
@@ -116,34 +122,53 @@ class RAGGenerator:
         self.min_evidence_score = min_evidence_score
 
     def _generate_with_gemini(self, user_prompt: str) -> Optional[str]:
-        """Call Gemini generateContent API with fallback cascade."""
-        models = [self.gemini_model, "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.8-flash"]
+        """Call Gemini generateContent API with fallback cascade and retry handling."""
+        import time
+
+        models = [
+            self.gemini_model,
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ]
         seen = set()
-        unique_models = [m for m in models if not (m in seen or seen.add(m))]
+        unique_models = [m for m in models if m and not (m in seen or seen.add(m))]
 
         for model in unique_models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}"
-                payload = {
-                    "contents": [{"parts": [{"text": user_prompt}]}],
-                    "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                    "generationConfig": {"temperature": 0.25, "maxOutputTokens": 1000}
-                }
-                headers = {
-                    "Content-Type": "application/json",
-                    "X-goog-api-key": self.gemini_api_key
-                }
-                with httpx.Client(timeout=18.0) as client:
-                    resp = client.post(url, json=payload, headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts and "text" in parts[0]:
-                                return parts[0]["text"].strip()
-            except Exception:
-                continue
+            for attempt in range(2):
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}"
+                    payload = {
+                        "contents": [{"parts": [{"text": user_prompt}]}],
+                        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                        "generationConfig": {"temperature": 0.25, "maxOutputTokens": 1000}
+                    }
+                    headers = {
+                        "Content-Type": "application/json",
+                        "X-goog-api-key": self.gemini_api_key
+                    }
+                    with httpx.Client(timeout=20.0) as client:
+                        resp = client.post(url, json=payload, headers=headers)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                parts = candidates[0].get("content", {}).get("parts", [])
+                                if parts and "text" in parts[0]:
+                                    return parts[0]["text"].strip()
+                        elif resp.status_code == 503 and attempt == 0:
+                            time.sleep(0.8)
+                            continue
+                        else:
+                            logger.warning(f"[Gemini] Model {model} returned status {resp.status_code}: {resp.text[:120]}")
+                            break
+                except Exception as err:
+                    logger.warning(f"[Gemini] Model {model} request failed (attempt {attempt + 1}): {err}")
+                    if attempt == 0:
+                        time.sleep(0.5)
+                        continue
+                    break
         return None
 
     def generate(
